@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+ <meta charset="UTF-8">
+ <meta name="robots" content="noindex">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>あみだくじ決定くん</title>
+ <script src="https://cdn.tailwindcss.com"></script>
+ <script src="https://unpkg.com/lucide@latest"></script>
+ <style>
+ @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+ body { font-family: 'Inter', 'Noto Sans JP', sans-serif; }
+ .canvas-container {
+ overflow: auto;
+ -webkit-overflow-scrolling: touch;
+ position: relative;
+ }
+ canvas {
+ display: block;
+ margin: 0 auto;
+ cursor: pointer;
+ transform-origin: top center;
+ }
+ .glass-morphism {
+ background: rgba(30, 41, 59, 0.7);
+ backdrop-filter: blur(10px);
+ border: 1px solid rgba(255, 255, 255, 0.1);
+ }
+ .speed-btn, .mode-btn {
+ background-color: #334155;
+ color: #f1f5f9;
+ border: 1px solid #475569;
+ }
+ .speed-btn:hover, .mode-btn:hover {
+ background-color: #475569;
+ }
+ .speed-btn.active, .mode-btn.active {
+ background-color: #4f46e5;
+ color: white;
+ border-color: #4f46e5;
+ }
+ input[type=range]::-webkit-slider-runnable-track {
+ background: #334155;
+ }
+ ::-webkit-scrollbar {
+ width: 8px;
+ height: 8px;
+ }
+ ::-webkit-scrollbar-track {
+ background: #1e293b;
+ }
+ ::-webkit-scrollbar-thumb {
+ background: #475569;
+ border-radius: 4px;
+ }
+ </style>
+</head>
+<body class="bg-black text-white min-h-screen pb-12">
+ <div class="max-w-5xl mx-auto px-4 py-8 relative">
+ <!-- スピードコントロール (右上) -->
+ <div class="absolute top-4 right-4 z-20 hidden md:flex items-center gap-1 bg-slate-800/80 p-1 rounded-lg border border-slate-700 shadow-sm">
+ <span class="text-[10px] font-bold text-slate-400 px-2 uppercase">Speed</span>
+ <button onclick="setSpeed(0.25, this)" class="speed-btn px-2 py-1 text-[10px] font-bold rounded-md transition-colors">超ゆっくり</button>
+ <button onclick="setSpeed(0.5, this)" class="speed-btn px-2 py-1 text-[10px] font-bold rounded-md transition-colors">ゆっくり</button>
+ <button onclick="setSpeed(1, this)" class="speed-btn active px-2 py-1 text-[10px] font-bold rounded-md transition-colors">ふつう</button>
+ <button onclick="setSpeed(2.5, this)" class="speed-btn px-2 py-1 text-[10px] font-bold rounded-md transition-colors">高速</button>
+ <button onclick="setSpeed(5, this)" class="speed-btn px-2 py-1 text-[10px] font-bold rounded-md transition-colors">超高速</button>
+ </div>
+ <!-- ヘッダー -->
+ <header class="text-left mb-8">
+ <h1 class="text-3xl font-bold text-orange-500 flex items-center gap-2">
+ <i data-lucide="shuffle"></i> あみだくじ決定くん
+ </h1>
+ <p class="text-slate-400 mt-2">順番にアニメーションして結果を自動発表します!</p>
+ </header>
+ <!-- 設定セクション -->
+ <div class="glass-morphism rounded-2xl p-6 shadow-xl mb-8">
+ <div class="flex flex-col gap-6">
+ <div class="flex flex-col md:flex-row gap-6 items-start">
+ <div class="w-full md:w-1/4 space-y-4">
+ <div>
+ <label class="block text-sm font-semibold text-slate-300 mb-2 flex items-center gap-1">
+ <i data-lucide="users" class="w-4 h-4"></i> 参加人数 (2-20)
+ </label>
+ <input type="range" id="memberCount" min="2" max="20" value="5" 
+ class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500">
+ <div class="text-center mt-2 font-bold text-indigo-400 text-xl"><span id="countDisplay">5</span>人</div>
+ </div>
+ <!-- モード切替ボタン -->
+ <div class="pt-2 border-t border-slate-700">
+ <label class="block text-sm font-semibold text-slate-300 mb-2 flex items-center gap-1">
+ <i data-lucide="settings-2" class="w-4 h-4"></i> モード選択
+ </label>
+ <div class="grid grid-cols-3 gap-1">
+ <button onclick="setMode('order', this)" class="mode-btn active py-1 text-xs font-bold rounded-md transition-colors">順番</button>
+ <button onclick="setMode('team', this)" class="mode-btn py-1 text-xs font-bold rounded-md transition-colors">チーム</button>
+ <button onclick="setMode('atari', this)" class="mode-btn py-1 text-xs font-bold rounded-md transition-colors">当たり</button>
+ </div>
+ </div>
+ 
+ <!-- チーム分けスライダー -->
+ <div id="teamSliderArea" class="pt-2 border-t border-slate-700 hidden">
+ <label class="block text-sm font-semibold text-slate-300 mb-2 flex items-center gap-1">
+ <i data-lucide="users-2" class="w-4 h-4"></i> チーム分け数
+ </label>
+ <input type="range" id="teamCount" min="1" max="5" value="1" 
+ class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-orange-500">
+ <div class="text-center mt-2 font-bold text-orange-400 text-lg"><span id="teamDisplay">1</span>チーム</div>
+ </div>
+ <!-- 当たり数スライダー -->
+ <div id="atariSliderArea" class="pt-2 border-t border-slate-700 hidden">
+ <label class="block text-sm font-semibold text-slate-300 mb-2 flex items-center gap-1">
+ <i data-lucide="star" class="w-4 h-4 text-yellow-400"></i> 当たり数
+ </label>
+ <input type="range" id="atariCount" min="1" max="5" value="1" 
+ class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-yellow-500">
+ <div class="text-center mt-2 font-bold text-yellow-400 text-lg"><span id="atariDisplay">1</span>人当たり</div>
+ </div>
+ </div>
+ <div class="w-full md:w-3/4">
+ <label class="block text-sm font-semibold text-slate-300 mb-2 flex items-center gap-1">
+ <i data-lucide="edit-3" class="w-4 h-4"></i> 参加者の名前
+ </label>
+ <div id="nameInputsGrid" class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2 max-h-32 overflow-y-auto p-1">
+ </div>
+ </div>
+ </div>
+ <div class="w-full border-t border-slate-700 pt-4">
+ <label class="block text-sm font-semibold text-slate-300 mb-2 flex items-center gap-1">
+ <i data-lucide="flag" class="w-4 h-4"></i> ゴールの項目(編集可能)
+ </label>
+ <div id="goalInputsGrid" class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2 max-h-32 overflow-y-auto p-1">
+ </div>
+ </div>
+ </div>
+ <div class="mt-6 flex items-center justify-center border-t pt-6 border-slate-700">
+ <button id="generateBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-full font-semibold flex items-center gap-2 transition-all active:scale-95 shadow-md">
+ <i data-lucide="refresh-cw" class="w-5 h-5"></i> 配置をシャッフル
+ </button>
+ </div>
+ </div>
+ <!-- キャンバスエリア -->
+ <div class="relative bg-slate-900 rounded-2xl shadow-inner border border-slate-800 p-4 canvas-container" style="min-height: 500px;">
+ <div id="overlayMsg" class="absolute top-4 inset-x-4 flex justify-between items-center pointer-events-none z-10">
+ <div class="flex items-center gap-2 pointer-events-auto">
+ <div class="bg-indigo-900/80 text-white px-4 py-2 rounded-full border border-indigo-700 text-xs font-bold shadow-sm">
+ 名前をクリックしてスタート!
+ </div>
+ <button id="peekBtn" class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-full text-xs font-semibold flex items-center gap-1 transition-all active:scale-95 shadow-md">
+ <i data-lucide="eye" class="w-4 h-4"></i> ?を見る
+ </button>
+ </div>
+ <div class="flex gap-2 pointer-events-auto">
+ <button id="stopBtn" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-full text-xs font-semibold flex items-center gap-1 transition-all active:scale-95 shadow-md hidden">
+ <i data-lucide="square" class="w-4 h-4"></i> 停止
+ </button>
+ <button id="showResultsBtn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-full text-xs font-semibold flex items-center gap-1 transition-all active:scale-95 shadow-md">
+ <i data-lucide="play-circle" class="w-4 h-4"></i> 全結果を自動で見る
+ </button>
+ <button id="instantBtn" class="bg-slate-700 hover:bg-slate-800 text-white px-4 py-2 rounded-full text-xs font-semibold flex items-center gap-1 transition-all active:scale-95 shadow-md">
+ <i data-lucide="zap" class="w-4 h-4"></i> 全結果だけ見る
+ </button>
+ </div>
+ </div>
+ <!-- ズームコントロール -->
+ <div class="absolute bottom-4 left-4 z-10 flex items-center gap-1 bg-slate-800/80 p-1 rounded-lg border border-slate-700 shadow-lg pointer-events-auto">
+ <button onclick="changeZoom(-0.1)" class="w-8 h-8 flex items-center justify-center rounded bg-slate-700 hover:bg-slate-600 text-white transition-colors" title="縮小">
+ <i data-lucide="minus" class="w-4 h-4"></i>
+ </button>
+ <div id="zoomValue" class="px-2 text-[10px] font-bold min-w-[40px] text-center">100%</div>
+ <button onclick="changeZoom(0.1)" class="w-8 h-8 flex items-center justify-center rounded bg-slate-700 hover:bg-slate-600 text-white transition-colors" title="拡大">
+ <i data-lucide="plus" class="w-4 h-4"></i>
+ </button>
+ <button onclick="resetZoom()" class="px-2 h-8 text-[10px] font-bold rounded bg-indigo-600 hover:bg-indigo-500 text-white transition-colors">
+ リセット
+ </button>
+ </div>
+ 
+ <canvas id="amidaCanvas"></canvas>
+ </div>
+ </div>
+ <script>
+ const canvas = document.getElementById('amidaCanvas');
+ const ctx = canvas.getContext('2d');
+ const memberCountInput = document.getElementById('memberCount');
+ const countDisplay = document.getElementById('countDisplay');
+ const teamCountInput = document.getElementById('teamCount');
+ const teamDisplay = document.getElementById('teamDisplay');
+ const atariCountInput = document.getElementById('atariCount');
+ const atariDisplay = document.getElementById('atariDisplay');
+ const nameInputsGrid = document.getElementById('nameInputsGrid');
+ const goalInputsGrid = document.getElementById('goalInputsGrid');
+ const generateBtn = document.getElementById('generateBtn');
+ const peekBtn = document.getElementById('peekBtn');
+ const showResultsBtn = document.getElementById('showResultsBtn');
+ const instantBtn = document.getElementById('instantBtn');
+ const stopBtn = document.getElementById('stopBtn');
+ const zoomValueDisplay = document.getElementById('zoomValue');
+ let members = [];
+ let goalItemLabels = [];
+ let goals = [];
+ let revealedGoals = []; 
+ let finishedResultsByStartIdx = {};
+ let isPeekMode = false; 
+ let horizontalBars = [];
+ let isAnimating = false;
+ let stopRequested = false; 
+ let animationPath = [];
+ let winnersMap = {}; 
+ let currentZoom = 1.0;
+ let currentMode = 'order'; // order, team, atari
+ const CONFIG = {
+ paddingTop: 140, 
+ paddingBottom: 80,
+ topSafeZone: 40, 
+ bottomSafeZone: 40, 
+ minHorizontalGap: 0.08,
+ lineWidth: 3,
+ lineColor: '#ffffff', 
+ activeColor: '#00e5ff', 
+ animSpeed: 1 
+ };
+ function init() {
+ lucide.createIcons();
+ updateInputs();
+ generateAmida();
+ }
+ function getInitialName(index) {
+ return String.fromCharCode(65 + index);
+ }
+ // モードに合わせて適切なデフォルト値を返す
+ function getInitialGoal(index) {
+ if (currentMode === 'team') {
+ const n = parseInt(memberCountInput.value);
+ const t = parseInt(teamCountInput.value);
+ const base = Math.floor(n / t);
+ const extra = n % t;
+ let currentTotal = 0;
+ for (let teamNum = 1; teamNum <= t; teamNum++) {
+ currentTotal += base + (teamNum <= extra ? 1 : 0);
+ if (index < currentTotal) return `${teamNum}`;
+ }
+ } else if (currentMode === 'atari') {
+ const a = parseInt(atariCountInput.value);
+ return index < a ? "当たり" : "はずれ";
+ }
+ return `${index + 1}番`;
+ }
+ window.setSpeed = function(val, btn) {
+ CONFIG.animSpeed = val;
+ document.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
+ btn.classList.add('active');
+ };
+ window.setMode = function(mode, btn) {
+ currentMode = mode;
+ document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+ btn.classList.add('active');
+ 
+ document.getElementById('teamSliderArea').classList.toggle('hidden', mode !== 'team');
+ document.getElementById('atariSliderArea').classList.toggle('hidden', mode !== 'atari');
+ 
+ applyDistribution();
+ generateAmida();
+ };
+ window.changeZoom = function(delta) {
+ currentZoom = Math.min(Math.max(0.3, currentZoom + delta), 2.0);
+ updateZoomDisplay();
+ draw();
+ };
+ window.resetZoom = function() {
+ currentZoom = 1.0;
+ updateZoomDisplay();
+ draw();
+ };
+ function updateZoomDisplay() {
+ zoomValueDisplay.textContent = `${Math.round(currentZoom * 100)}%`;
+ }
+ function updateInputs() {
+ const count = parseInt(memberCountInput.value);
+ countDisplay.textContent = count;
+ 
+ teamCountInput.max = count;
+ if (parseInt(teamCountInput.value) > count) teamCountInput.value = count;
+ teamDisplay.textContent = teamCountInput.value;
+ atariCountInput.max = count;
+ if (parseInt(atariCountInput.value) > count) atariCountInput.value = count;
+ atariDisplay.textContent = atariCountInput.value;
+ const currentNames = Array.from(document.querySelectorAll('.name-input')).map(input => input.value);
+ nameInputsGrid.innerHTML = '';
+ 
+ const currentGoals = Array.from(document.querySelectorAll('.goal-input')).map(input => input.value);
+ goalInputsGrid.innerHTML = '';
+ for (let i = 0; i < count; i++) {
+ const nameVal = currentNames[i] || getInitialName(i);
+ const nameDiv = document.createElement('div');
+ nameDiv.className = 'relative';
+ const nameInput = document.createElement('input');
+ nameInput.type = 'text';
+ nameInput.className = 'name-input w-full bg-slate-800 border-none rounded-lg px-2 py-1.5 text-center text-sm font-bold text-white focus:ring-2 focus:ring-indigo-500 transition-all';
+ nameInput.value = nameVal;
+ nameInput.dataset.index = i;
+ nameInput.placeholder = getInitialName(i);
+ nameInput.onfocus = function() { this.value = ''; };
+ nameInput.onblur = function() {
+ if (this.value.trim() === '') this.value = getInitialName(parseInt(this.dataset.index));
+ syncAll();
+ draw();
+ };
+ nameInput.oninput = function() { syncAll(); draw(); };
+ nameDiv.appendChild(nameInput);
+ nameInputsGrid.appendChild(nameDiv);
+ const goalVal = currentGoals[i] || getInitialGoal(i);
+ const goalDiv = document.createElement('div');
+ goalDiv.className = 'relative';
+ const goalInput = document.createElement('input');
+ goalInput.type = 'text';
+ goalInput.className = 'goal-input w-full bg-slate-800 border-none rounded-lg px-2 py-1.5 text-center text-xs font-bold text-slate-300 focus:ring-2 focus:ring-emerald-500 transition-all';
+ goalInput.value = goalVal;
+ goalInput.dataset.index = i;
+ goalInput.placeholder = getInitialGoal(i);
+ goalInput.onfocus = function() { this.value = ''; };
+ goalInput.onblur = function() {
+ if (this.value.trim() === '') this.value = getInitialGoal(parseInt(this.dataset.index));
+ syncAll();
+ draw();
+ };
+ goalInput.oninput = function() { syncAll(); draw(); };
+ goalDiv.appendChild(goalInput);
+ goalInputsGrid.appendChild(goalDiv);
+ }
+ applyDistribution();
+ }
+ function applyDistribution() {
+ // 表示用の数字を更新
+ teamDisplay.textContent = teamCountInput.value;
+ atariDisplay.textContent = atariCountInput.value;
+ const goalInputs = document.querySelectorAll('.goal-input');
+ goalInputs.forEach((input, i) => {
+ input.value = getInitialGoal(i);
+ });
+ syncAll();
+ draw();
+ }
+ function syncAll() {
+ members = Array.from(document.querySelectorAll('.name-input')).map(input => {
+ return input.value.trim() || getInitialName(parseInt(input.dataset.index));
+ });
+ goalItemLabels = Array.from(document.querySelectorAll('.goal-input')).map(input => {
+ return input.value.trim() || getInitialGoal(parseInt(input.dataset.index));
+ });
+ }
+ function shuffle(array) {
+ for (let i = array.length - 1; i > 0; i--) {
+ const j = Math.floor(Math.random() * (i + 1));
+ [array[i], array[j]] = [array[j], array[i]];
+ }
+ return array;
+ }
+ function generateAmida() {
+ if (isAnimating) return;
+ const count = members.length;
+ horizontalBars = [];
+ revealedGoals = new Array(count).fill(false);
+ finishedResultsByStartIdx = {};
+ isPeekMode = false;
+ goals = [...goalItemLabels];
+ shuffle(goals);
+ const columnsBars = Array.from({ length: count - 1 }, () => []);
+ for (let col = 0; col < count - 1; col++) {
+ const barCount = 3 + Math.floor(Math.random() * 3);
+ let attempts = 0;
+ while (columnsBars[col].length < barCount && attempts < 50) {
+ const level = Math.random(); 
+ const tooCloseSelf = columnsBars[col].some(b => Math.abs(b - level) < CONFIG.minHorizontalGap);
+ const leftCol = col - 1;
+ const tooCloseLeft = leftCol >= 0 && columnsBars[leftCol].some(b => Math.abs(b - level) < 0.02);
+ if (!tooCloseSelf && !tooCloseLeft) {
+ columnsBars[col].push(level);
+ horizontalBars.push({ col, level });
+ }
+ attempts++;
+ }
+ }
+ horizontalBars.sort((a, b) => a.level - b.level);
+ calculateResults();
+ draw();
+ }
+ function calculateResults() {
+ winnersMap = {};
+ for (let i = 0; i < members.length; i++) winnersMap[i] = getEndIndex(i);
+ }
+ function getEndIndex(startIndex) {
+ let currentCol = startIndex;
+ let currentLevel = 0;
+ const sortedBars = [...horizontalBars].sort((a, b) => a.level - b.level);
+ for (const bar of sortedBars) {
+ if (bar.level > currentLevel) {
+ if (bar.col === currentCol) currentCol++;
+ else if (bar.col === currentCol - 1) currentCol--;
+ }
+ }
+ return currentCol;
+ }
+ function getTracePath(startIndex) {
+ let currentCol = startIndex;
+ let currentLevel = 0;
+ const path = [{ col: currentCol, level: 0 }];
+ const sortedBars = [...horizontalBars].sort((a, b) => a.level - b.level);
+ for (const bar of sortedBars) {
+ if (bar.col === currentCol) {
+ path.push({ col: currentCol, level: bar.level });
+ currentCol++;
+ path.push({ col: currentCol, level: bar.level });
+ } else if (bar.col === currentCol - 1) {
+ path.push({ col: currentCol, level: bar.level });
+ currentCol--;
+ path.push({ col: currentCol, level: bar.level });
+ }
+ }
+ path.push({ col: currentCol, level: 1 });
+ return path;
+ }
+ function draw(activePath = null, progress = 0) {
+ const count = members.length;
+ const baseWidth = Math.max(800, count * 100);
+ const baseHeight = 650;
+ canvas.width = baseWidth * currentZoom;
+ canvas.height = baseHeight * currentZoom;
+ const colWidth = (baseWidth / (count + 1)) * currentZoom;
+ const paddingTop = CONFIG.paddingTop * currentZoom;
+ const paddingBottom = CONFIG.paddingBottom * currentZoom;
+ const topSafeZone = CONFIG.topSafeZone * currentZoom;
+ const bottomSafeZone = CONFIG.bottomSafeZone * currentZoom;
+ const mainHeight = canvas.height - paddingTop - paddingBottom;
+ const barDrawingHeight = mainHeight - topSafeZone - bottomSafeZone;
+ ctx.clearRect(0, 0, canvas.width, canvas.height);
+ ctx.beginPath();
+ ctx.strokeStyle = CONFIG.lineColor;
+ ctx.lineWidth = CONFIG.lineWidth * currentZoom;
+ for (let i = 1; i <= count; i++) {
+ const x = i * colWidth;
+ ctx.moveTo(x, paddingTop);
+ ctx.lineTo(x, canvas.height - paddingBottom);
+ }
+ ctx.stroke();
+ ctx.beginPath();
+ horizontalBars.forEach(bar => {
+ const x1 = (bar.col + 1) * colWidth;
+ const x2 = (bar.col + 2) * colWidth;
+ const y = paddingTop + topSafeZone + (bar.level * barDrawingHeight);
+ ctx.moveTo(x1, y);
+ ctx.lineTo(x2, y);
+ });
+ ctx.stroke();
+ ctx.textAlign = 'center';
+ ctx.textBaseline = 'bottom';
+ ctx.font = `bold ${18 * currentZoom}px sans-serif`;
+ members.forEach((name, i) => {
+ const x = (i + 1) * colWidth;
+ if (finishedResultsByStartIdx[i]) {
+ const resStr = finishedResultsByStartIdx[i];
+ if (resStr === "1" || resStr === "1番") {
+ ctx.fillStyle = '#f59e0b';
+ ctx.fillText(`★${name} (1)`, x, paddingTop - (15 * currentZoom));
+ } else if (resStr === "2" || resStr === "2番") {
+ ctx.fillStyle = '#cbd5e1'; 
+ ctx.fillText(`${name} (2)`, x, paddingTop - (15 * currentZoom));
+ } else if (resStr === "3" || resStr === "3番") {
+ ctx.fillStyle = '#fb923c'; 
+ ctx.fillText(`${name} (3)`, x, paddingTop - (15 * currentZoom));
+ } else {
+ ctx.fillStyle = (resStr === "当たり") ? '#fbbf24' : '#818cf8';
+ ctx.fillText(`${name} (${resStr})`, x, paddingTop - (15 * currentZoom));
+ }
+ } else {
+ ctx.fillStyle = '#ffffff';
+ ctx.fillText(name, x, paddingTop - (15 * currentZoom));
+ }
+ ctx.beginPath();
+ ctx.arc(x, paddingTop, 5 * currentZoom, 0, Math.PI * 2);
+ ctx.fill();
+ });
+ ctx.textBaseline = 'top';
+ for (let i = 0; i < count; i++) {
+ const x = (i + 1) * colWidth;
+ const y = canvas.height - paddingBottom + (15 * currentZoom);
+ if (revealedGoals[i] || isPeekMode) {
+ const rankLabel = goals[i];
+ if (rankLabel === "1" || rankLabel === "1番") {
+ ctx.fillStyle = '#f59e0b';
+ ctx.beginPath();
+ ctx.arc(x, y + (14 * currentZoom), 26 * currentZoom, 0, Math.PI * 2);
+ ctx.fill();
+ ctx.fillStyle = 'white';
+ ctx.font = `bold ${26 * currentZoom}px sans-serif`;
+ ctx.fillText(`★1`, x, y - (4 * currentZoom));
+ } else if (rankLabel === "2" || rankLabel === "2番") {
+ ctx.fillStyle = '#94a3b8';
+ ctx.beginPath();
+ ctx.arc(x, y + (14 * currentZoom), 22 * currentZoom, 0, Math.PI * 2);
+ ctx.fill();
+ ctx.fillStyle = 'white';
+ ctx.font = `bold ${22 * currentZoom}px sans-serif`;
+ ctx.fillText(`2`, x, y);
+ } else if (rankLabel === "3" || rankLabel === "3番") {
+ ctx.fillStyle = '#b45309';
+ ctx.beginPath();
+ ctx.arc(x, y + (14 * currentZoom), 20 * currentZoom, 0, Math.PI * 2);
+ ctx.fill();
+ ctx.fillStyle = 'white';
+ ctx.font = `bold ${20 * currentZoom}px sans-serif`;
+ ctx.fillText(`3`, x, y + (2 * currentZoom));
+ } else {
+ ctx.fillStyle = (rankLabel === "当たり") ? '#fbbf24' : '#ffffff';
+ ctx.font = `bold ${18 * currentZoom}px sans-serif`;
+ ctx.fillText(rankLabel, x, y);
+ }
+ } else {
+ ctx.fillStyle = '#ffffff';
+ ctx.font = `bold ${22 * currentZoom}px sans-serif`;
+ ctx.fillText('?', x, y);
+ ctx.strokeStyle = '#64748b';
+ ctx.beginPath();
+ ctx.arc(x, y + (14 * currentZoom), 22 * currentZoom, 0, Math.PI * 2);
+ ctx.stroke();
+ }
+ }
+ if (activePath) {
+ ctx.beginPath();
+ ctx.strokeStyle = CONFIG.activeColor;
+ ctx.lineWidth = (CONFIG.lineWidth + 3) * currentZoom;
+ ctx.lineCap = 'round';
+ ctx.lineJoin = 'round';
+ const getCanvasYForLevel = (level) => {
+ if (level === 1) return canvas.height - paddingBottom;
+ if (level === 0) return paddingTop;
+ return paddingTop + topSafeZone + (level * barDrawingHeight);
+ };
+ const totalPoints = activePath.length;
+ const segmentCount = totalPoints - 1;
+ const currentSegment = Math.floor(progress * segmentCount);
+ const segmentProgress = (progress * segmentCount) % 1;
+ ctx.moveTo((activePath[0].col + 1) * colWidth, getCanvasYForLevel(activePath[0].level));
+ for (let i = 0; i < currentSegment; i++) {
+ ctx.lineTo((activePath[i+1].col + 1) * colWidth, getCanvasYForLevel(activePath[i+1].level));
+ }
+ let curX, curY;
+ if (currentSegment < segmentCount) {
+ const lastNode = activePath[currentSegment];
+ const nextNode = activePath[currentSegment + 1];
+ curX = ((lastNode.col + 1) * colWidth) + (((nextNode.col + 1) * colWidth) - ((lastNode.col + 1) * colWidth)) * segmentProgress;
+ const startY = getCanvasYForLevel(lastNode.level);
+ const endY = getCanvasYForLevel(nextNode.level);
+ curY = startY + (endY - startY) * segmentProgress;
+ ctx.lineTo(curX, curY);
+ } else {
+ curX = (activePath[totalPoints-1].col + 1) * colWidth;
+ curY = getCanvasYForLevel(activePath[totalPoints-1].level);
+ }
+ ctx.stroke();
+ ctx.fillStyle = CONFIG.activeColor;
+ ctx.shadowBlur = 10 * currentZoom;
+ ctx.shadowColor = CONFIG.activeColor;
+ ctx.beginPath();
+ ctx.arc(curX, curY, 8 * currentZoom, 0, Math.PI * 2);
+ ctx.fill();
+ ctx.shadowBlur = 0;
+ }
+ }
+ function animateSinglePath(startIndex) {
+ return new Promise((resolve) => {
+ animationPath = getTracePath(startIndex);
+ let progress = 0;
+ const animate = () => {
+ if (stopRequested) { resolve('aborted'); return; }
+ progress += 0.005 * CONFIG.animSpeed;
+ if (progress >= 1) {
+ progress = 1;
+ const finalCol = winnersMap[startIndex];
+ revealedGoals[finalCol] = true; 
+ finishedResultsByStartIdx[startIndex] = goals[finalCol]; 
+ draw(animationPath, 1);
+ resolve('finished');
+ return;
+ }
+ draw(animationPath, progress);
+ requestAnimationFrame(animate);
+ };
+ animate();
+ });
+ }
+ async function runSequentialAnimations() {
+ if (isAnimating) return;
+ isAnimating = true;
+ stopRequested = false;
+ stopBtn.classList.remove('hidden');
+ for (let i = 0; i < members.length; i++) {
+ const result = await animateSinglePath(i);
+ if (result === 'aborted') break;
+ const delay = 1000;
+ const start = Date.now();
+ while(Date.now() - start < delay) {
+ if (stopRequested) break;
+ await new Promise(r => requestAnimationFrame(r));
+ }
+ if (stopRequested) break;
+ }
+ isAnimating = false;
+ stopRequested = false;
+ stopBtn.classList.add('hidden');
+ draw(); 
+ }
+ async function runSingleManualAnimation(startIndex) {
+ if (isAnimating) return;
+ isAnimating = true;
+ stopRequested = false;
+ stopBtn.classList.remove('hidden');
+ await animateSinglePath(startIndex);
+ isAnimating = false;
+ stopRequested = false;
+ stopBtn.classList.add('hidden');
+ draw(); 
+ }
+ function showResultsInstantly() {
+ if (isAnimating) return;
+ isPeekMode = true;
+ revealedGoals = new Array(members.length).fill(true);
+ for(let i=0; i<members.length; i++) finishedResultsByStartIdx[i] = goals[winnersMap[i]];
+ draw();
+ }
+ memberCountInput.addEventListener('input', () => {
+ if (isAnimating) return;
+ updateInputs();
+ generateAmida();
+ });
+ // チーム・当たりスライダー変更時に即時再生成と表示テキスト更新
+ teamCountInput.addEventListener('input', () => {
+ applyDistribution();
+ generateAmida();
+ });
+ atariCountInput.addEventListener('input', () => {
+ applyDistribution();
+ generateAmida();
+ });
+ generateBtn.addEventListener('click', () => {
+ if (isAnimating) return;
+ generateAmida();
+ });
+ peekBtn.addEventListener('click', () => {
+ isPeekMode = !isPeekMode;
+ draw();
+ });
+ showResultsBtn.addEventListener('click', runSequentialAnimations);
+ instantBtn.addEventListener('click', showResultsInstantly);
+ stopBtn.addEventListener('click', () => stopRequested = true);
+ canvas.addEventListener('click', (e) => {
+ if (isAnimating) return;
+ const rect = canvas.getBoundingClientRect();
+ const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+ const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+ const count = members.length;
+ const baseWidth = Math.max(800, count * 100);
+ const colWidth = (baseWidth / (count + 1)) * currentZoom;
+ const paddingTop = CONFIG.paddingTop * currentZoom;
+ for (let i = 0; i < members.length; i++) {
+ const lineX = (i + 1) * colWidth;
+ const dist = Math.abs(x - lineX);
+ if (dist < 40 * currentZoom && y < paddingTop + (60 * currentZoom)) {
+ runSingleManualAnimation(i);
+ break;
+ }
+ }
+ });
+ window.onload = init;
+ </script>
+</body>
+</html>
